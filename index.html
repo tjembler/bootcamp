@@ -1,421 +1,926 @@
-// ============================================================
-// CURRENT HOME — BOOT CAMP SCORING
-// Google Apps Script — Web App Endpoint
-// Version 1.0 | May 2026
-//
-// SETUP INSTRUCTIONS (one-time, ~5 minutes):
-// 1. Open your master Google Sheet
-// 2. Click Extensions > Apps Script
-// 3. Delete any existing code and paste this entire file
-// 4. Click Save (floppy disk icon)
-// 5. Click Deploy > New Deployment
-// 6. Select type: Web App
-// 7. Set "Execute as": Me
-// 8. Set "Who has access": Anyone
-// 9. Click Deploy — copy the Web App URL
-// 10. Paste that URL into the WEB_APP_URL variable in the
-//     scoring web app (clearly marked in the JavaScript)
-// ============================================================
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Current Home — Boot Camp Scoring</title>
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;500;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --cyan: #0DCCE8; --charcoal: #1A1A2E; --black: #000000;
+  --gray: #D9D9D9; --off-white: #F7F8FA; --white: #FFFFFF;
+  --slate: #4A4A5A; --cyan-light: #E6F9FC; --green: #28A745;
+  --amber: #F5A623; --red: #DC3545;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'Montserrat', sans-serif; font-weight: 300; background: var(--off-white); color: var(--black); min-height: 100vh; }
 
-// ── Row offsets within each session block ──────────────────
-// Session 1 starts at row 7, Session 2 at row 66, Session 3 at row 125
-// Each block is 59 rows with a 6-row spacer = 65 rows per session
-var SESSION_START_ROWS = [7, 66, 125];
+.app-header {
+  background: var(--charcoal); padding: 14px 28px;
+  display: flex; align-items: center; justify-content: space-between;
+  position: sticky; top: 0; z-index: 200;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.25);
+}
+.wordmark { font-weight: 700; font-size: 20px; letter-spacing: 2px; }
+.wordmark .w1 { color: #fff; }
+.wordmark .w2 { color: var(--cyan); }
+.header-tag { color: var(--gray); font-size: 11px; font-weight: 500; letter-spacing: 1px; text-transform: uppercase; margin-top: 2px; }
+#header-session-info { text-align: right; color: var(--gray); font-size: 12px; display: none; }
+#header-session-info .hsi-name { font-weight: 700; color: #fff; font-size: 14px; }
 
-var ROW_OFFSETS = {
-  date:           1,   // row 8  (SESSION_START + 1)
-  manager:        2,   // row 9
-  profile:        3,   // row 10
-  recordingLink:  4,   // row 11
-  // section header at +5 (row 12) — skip
-  // Step scores: C column, rows START+6 through START+35 (30 steps)
-  stepsStart:     6,   // row 13 = first step score row
-  // Objections section header at +38, note at +39
-  objsStart:      40,  // row 47 = OBJ-1
+.screens .screen { display: none; }
+.screens .screen.active { display: block; }
+
+/* SETUP */
+.setup-wrap { max-width: 540px; margin: 0 auto; padding: 48px 20px; }
+.setup-card { background: var(--white); border-radius: 16px; border: 1px solid var(--gray); padding: 40px; }
+.setup-title { font-size: 22px; font-weight: 700; color: var(--charcoal); margin-bottom: 4px; }
+.setup-sub { color: var(--slate); font-size: 13px; margin-bottom: 32px; line-height: 1.6; }
+.field-group { margin-bottom: 20px; }
+.field-label { font-size: 11px; font-weight: 700; letter-spacing: 0.8px; text-transform: uppercase; color: var(--slate); margin-bottom: 7px; display: block; }
+.field-input { width: 100%; padding: 11px 14px; border: 1.5px solid var(--gray); border-radius: 8px; font-family: 'Montserrat', sans-serif; font-size: 14px; font-weight: 300; background: var(--off-white); outline: none; transition: border-color 0.15s, background 0.15s; color: var(--black); }
+.field-input:focus { border-color: var(--cyan); background: #fff; }
+.session-pills { display: flex; gap: 10px; }
+.pill { flex: 1; padding: 12px 8px; border: 2px solid var(--gray); border-radius: 10px; cursor: pointer; text-align: center; font-family: 'Montserrat', sans-serif; font-size: 12px; font-weight: 500; background: var(--white); color: var(--slate); transition: all 0.15s; }
+.pill.selected { border-color: var(--cyan); background: var(--cyan-light); color: var(--charcoal); }
+.pill .pill-num { font-size: 22px; font-weight: 700; color: var(--cyan); display: block; margin-bottom: 2px; }
+.btn-primary { width: 100%; padding: 15px; background: var(--cyan); border: none; border-radius: 8px; font-family: 'Montserrat', sans-serif; font-weight: 700; font-size: 13px; letter-spacing: 1px; color: var(--charcoal); cursor: pointer; margin-top: 12px; text-transform: uppercase; transition: opacity 0.15s; }
+.btn-primary:hover { opacity: 0.88; }
+.btn-primary:disabled { opacity: 0.35; cursor: not-allowed; }
+
+/* SCORING LAYOUT */
+.scoring-layout { display: flex; height: calc(100vh - 79px); }
+
+.sidebar { width: 220px; min-width: 220px; background: var(--white); border-right: 1.5px solid var(--gray); overflow-y: auto; }
+.sidebar-section { padding: 8px 0; border-bottom: 1px solid var(--gray); }
+.sidebar-section-label { font-size: 9px; font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase; color: var(--slate); padding: 8px 14px 6px; }
+.sidebar-item { display: flex; align-items: flex-start; gap: 8px; padding: 8px 14px; cursor: pointer; font-size: 11px; font-weight: 500; color: var(--slate); transition: background 0.1s; border-left: 3px solid transparent; line-height: 1.35; }
+.sidebar-item:hover { background: var(--off-white); }
+.sidebar-item.active { background: var(--cyan-light); border-left-color: var(--cyan); color: var(--charcoal); }
+.sidebar-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--gray); flex-shrink: 0; margin-top: 2px; }
+.sidebar-dot.excellent { background: var(--cyan); }
+.sidebar-dot.fair { background: var(--amber); }
+.sidebar-dot.needs { background: var(--red); }
+.sidebar-dot.dna { background: #888; }
+
+.progress-bar-wrap { background: var(--white); border-bottom: 1px solid var(--gray); padding: 9px 20px; display: flex; align-items: center; gap: 12px; font-size: 11px; color: var(--slate); }
+.progress-bar-outer { flex: 1; height: 5px; background: var(--gray); border-radius: 3px; overflow: hidden; }
+.progress-bar-inner { height: 100%; background: var(--cyan); border-radius: 3px; transition: width 0.3s; }
+
+.main-panel-wrap { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+.main-panel { flex: 1; overflow-y: auto; padding: 20px; background: var(--off-white); }
+
+.session-banner { background: var(--charcoal); color: #fff; border-radius: 10px; padding: 14px 20px; margin-bottom: 18px; display: flex; align-items: center; justify-content: space-between; }
+.session-banner-name { font-weight: 700; font-size: 15px; }
+.session-banner-info { font-size: 11px; color: var(--gray); font-weight: 300; margin-top: 2px; }
+.session-badge { background: var(--cyan); color: var(--charcoal); font-weight: 700; font-size: 11px; padding: 5px 14px; border-radius: 20px; letter-spacing: 0.5px; }
+
+.section-divider { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.2px; color: var(--slate); padding: 10px 0 8px; margin-top: 6px; border-top: 1px solid var(--gray); }
+.section-divider:first-of-type { border-top: none; margin-top: 0; }
+
+.step-card { background: var(--white); border-radius: 10px; border: 1.5px solid var(--gray); margin-bottom: 10px; overflow: hidden; transition: border-color 0.15s; }
+.step-card.is-active { border-color: var(--cyan); }
+.step-card-header { padding: 14px 18px; cursor: pointer; display: flex; align-items: center; gap: 12px; }
+.step-card-header:hover { background: var(--off-white); }
+.step-num { width: 30px; height: 30px; border-radius: 50%; background: var(--charcoal); color: #fff; font-size: 10px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.step-title { font-weight: 500; font-size: 13px; flex: 1; }
+.step-badge { font-size: 10px; font-weight: 700; padding: 3px 10px; border-radius: 20px; white-space: nowrap; }
+.badge-excellent { background: #E6F9FC; color: #088fa3; }
+.badge-fair { background: #FFF8E6; color: #b07a00; }
+.badge-needs { background: #FEF0F0; color: #a02020; }
+.badge-dna { background: #F0F0F0; color: #555; }
+.badge-unscored { background: var(--gray); color: var(--slate); }
+
+.step-card-body { padding: 0 18px 18px; border-top: 1px solid var(--gray); background: var(--off-white); }
+.step-desc { font-size: 12px; color: var(--slate); padding: 12px 0 14px; line-height: 1.75; }
+.score-row { display: flex; gap: 8px; flex-wrap: wrap; }
+.score-btn { flex: 1; min-width: 110px; padding: 10px 6px; border: 2px solid var(--gray); border-radius: 8px; cursor: pointer; font-family: 'Montserrat', sans-serif; font-size: 10px; font-weight: 700; background: var(--white); color: var(--slate); transition: all 0.12s; text-align: center; line-height: 1.3; letter-spacing: 0.3px; }
+.score-btn:hover { border-color: var(--cyan); }
+.score-btn.sel-excellent { background: var(--cyan-light); border-color: var(--cyan); color: #088fa3; }
+.score-btn.sel-fair { background: #FFF8E6; border-color: var(--amber); color: #b07a00; }
+.score-btn.sel-needs { background: #FEF0F0; border-color: var(--red); color: #a02020; }
+.score-btn.sel-dna { background: #F0F0F0; border-color: #888; color: #444; }
+
+.notes-area { width: 100%; margin-top: 10px; padding: 10px; border: 1.5px solid var(--gray); border-radius: 8px; font-family: 'Montserrat', sans-serif; font-size: 12px; font-weight: 300; resize: vertical; min-height: 56px; background: var(--white); outline: none; color: var(--charcoal); transition: border-color 0.15s; }
+.notes-area:focus { border-color: var(--cyan); }
+.priority-flag { background: none; border: 1.5px solid var(--gray); border-radius: 6px; padding: 3px 8px; font-size: 10px; font-weight: 700; cursor: pointer; font-family: 'Montserrat', sans-serif; color: var(--slate); margin-left: 6px; transition: all 0.15s; white-space: nowrap; }
+.priority-flag:hover { border-color: var(--amber); color: var(--amber); }
+.priority-flag.flagged { background: #FFF8E6; border-color: var(--amber); color: #b07a00; }
+.priority-banner { background: #FFF8E6; border-left: 3px solid var(--amber); border-radius: 0 6px 6px 0; padding: 6px 10px; margin-top: 8px; font-size: 11px; font-weight: 700; color: #b07a00; display: none; }
+.priority-banner.visible { display: block; }
+.commitments-box { background: var(--off-white); border: 1px solid var(--gray); border-radius: 8px; padding: 12px; margin-top: 14px; }
+.commitments-box-label { font-size: 10px; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase; color: var(--slate); margin-bottom: 6px; }
+.commitments-textarea { font-size: 11px; width: 100%; border: 1px solid var(--gray); border-radius: 6px; padding: 7px 8px; font-family: 'Montserrat', sans-serif; outline: none; color: var(--charcoal); resize: vertical; min-height: 70px; background: var(--white); }
+.commitments-textarea:focus { border-color: var(--cyan); }
+.gen-summary-btn { width: 100%; padding: 13px; background: var(--cyan); border: none; border-radius: 8px; font-family: 'Montserrat', sans-serif; font-weight: 700; font-size: 11px; letter-spacing: 1px; color: var(--charcoal); cursor: pointer; margin-top: 10px; text-transform: uppercase; transition: opacity 0.15s; }
+.gen-summary-btn:hover { opacity: 0.85; }
+.priority-count { font-size: 10px; color: var(--amber); font-weight: 700; margin-top: 8px; text-align: center; }
+
+.obj-grid { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
+.obj-row { background: var(--white); border-radius: 8px; border: 1px solid var(--gray); padding: 12px 14px; }
+.obj-check-label { display: flex; align-items: flex-start; gap: 8px; cursor: pointer; font-size: 12px; font-weight: 500; color: var(--charcoal); line-height: 1.4; }
+.obj-check-label input { margin-top: 2px; flex-shrink: 0; accent-color: var(--cyan); }
+.obj-score-row { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--gray); }
+.obj-btn { font-size: 10px; padding: 5px 10px; border-radius: 6px; border: 1.5px solid var(--gray); cursor: pointer; font-family: 'Montserrat', sans-serif; font-weight: 700; background: var(--white); color: var(--slate); transition: all 0.12s; }
+.obj-btn:hover { border-color: var(--cyan); }
+.obj-btn.sel-excellent { background: var(--cyan-light); border-color: var(--cyan); color: #088fa3; }
+.obj-btn.sel-fair { background: #FFF8E6; border-color: var(--amber); color: #b07a00; }
+.obj-btn.sel-needs { background: #FEF0F0; border-color: var(--red); color: #a02020; }
+.obj-btn.sel-dna { background: #F0F0F0; border-color: #888; color: #444; }
+
+/* RIGHT RAIL */
+.right-rail { width: 264px; min-width: 264px; background: var(--white); border-left: 1.5px solid var(--gray); display: flex; flex-direction: column; overflow: hidden; }
+
+.rail-tabs { display: flex; border-bottom: 1.5px solid var(--gray); }
+.rail-tab { flex: 1; padding: 10px 4px; text-align: center; font-size: 10px; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase; cursor: pointer; color: var(--slate); border-bottom: 3px solid transparent; transition: all 0.15s; background: var(--white); border-top: none; border-left: none; border-right: none; font-family: 'Montserrat', sans-serif; }
+.rail-tab.active { color: var(--charcoal); border-bottom-color: var(--cyan); }
+.rail-tab:hover { background: var(--off-white); }
+
+.rail-pane { display: none; flex: 1; overflow-y: auto; }
+.rail-pane.active { display: flex; flex-direction: column; }
+
+/* SCORE SUMMARY PANE */
+.summary-inner { padding: 16px; display: flex; flex-direction: column; flex: 1; }
+.summary-title { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.2px; color: var(--slate); margin-bottom: 12px; }
+.tier-row { display: flex; align-items: center; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--gray); }
+.tier-row:last-of-type { border-bottom: none; }
+.tier-lbl { font-size: 12px; font-weight: 500; }
+.tier-val { font-size: 20px; font-weight: 700; }
+.c-cyan { color: var(--cyan); } .c-amber { color: var(--amber); } .c-red { color: var(--red); } .c-gray { color: #999; } .c-slate { color: var(--slate); }
+.recording-box { background: var(--cyan-light); border: 1px solid var(--cyan); border-radius: 8px; padding: 12px; margin-top: 14px; }
+.recording-box-label { font-size: 10px; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase; color: var(--slate); margin-bottom: 6px; }
+.recording-input { font-size: 11px; width: 100%; border: 1px solid var(--gray); border-radius: 6px; padding: 7px 8px; font-family: 'Montserrat', sans-serif; outline: none; color: var(--charcoal); }
+.recording-input:focus { border-color: var(--cyan); }
+.finish-btn { width: 100%; padding: 13px; background: var(--charcoal); border: none; border-radius: 8px; font-family: 'Montserrat', sans-serif; font-weight: 700; font-size: 11px; letter-spacing: 1px; color: var(--cyan); cursor: pointer; margin-top: 14px; text-transform: uppercase; transition: opacity 0.15s; }
+.finish-btn:hover { opacity: 0.85; }
+
+/* PROFILE PANE */
+.profile-inner { padding: 0; flex: 1; display: flex; flex-direction: column; }
+
+.profile-header { background: var(--charcoal); padding: 14px 16px; }
+.profile-difficulty { font-size: 9px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: var(--cyan); margin-bottom: 4px; }
+.profile-name { font-size: 16px; font-weight: 700; color: #fff; }
+.profile-tagline { font-size: 11px; color: var(--gray); margin-top: 3px; font-weight: 300; }
+
+.profile-body { padding: 14px 16px; flex: 1; overflow-y: auto; }
+
+.profile-section { margin-bottom: 16px; }
+.profile-section-label { font-size: 9px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: var(--slate); margin-bottom: 7px; padding-bottom: 5px; border-bottom: 1px solid var(--gray); }
+.profile-text { font-size: 12px; color: var(--charcoal); line-height: 1.7; font-weight: 300; }
+
+.profile-stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.profile-stat { background: var(--off-white); border-radius: 8px; padding: 10px; }
+.profile-stat-label { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--slate); margin-bottom: 3px; }
+.profile-stat-val { font-size: 13px; font-weight: 700; color: var(--charcoal); }
+
+.obj-pill-list { display: flex; flex-direction: column; gap: 6px; }
+.obj-pill { background: var(--off-white); border-radius: 6px; padding: 8px 10px; font-size: 11px; color: var(--charcoal); line-height: 1.45; border-left: 3px solid var(--gray); }
+.obj-pill.primary { border-left-color: var(--red); }
+.obj-pill.secondary { border-left-color: var(--amber); }
+.obj-pill-num { font-size: 9px; font-weight: 700; color: var(--slate); text-transform: uppercase; margin-bottom: 2px; }
+
+.coaching-note { background: var(--cyan-light); border: 1px solid var(--cyan); border-radius: 8px; padding: 10px 12px; font-size: 11px; color: #0a7a8f; line-height: 1.6; margin-top: 4px; }
+.coaching-note-label { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #088fa3; margin-bottom: 4px; }
+
+/* REPORT */
+.report-wrap { max-width: 720px; margin: 0 auto; padding: 32px 20px 60px; }
+.report-header-card { background: var(--charcoal); border-radius: 14px; padding: 28px 32px; margin-bottom: 20px; color: #fff; }
+.report-rep-name { font-size: 26px; font-weight: 700; }
+.report-meta { font-size: 12px; color: var(--gray); margin-top: 4px; font-weight: 300; }
+.score-totals { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-top: 20px; }
+.score-total-box { background: rgba(255,255,255,0.1); border-radius: 10px; padding: 14px; text-align: center; }
+.score-total-num { font-size: 30px; font-weight: 700; }
+.score-total-lbl { font-size: 10px; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase; opacity: 0.7; margin-top: 3px; }
+.report-section { background: var(--white); border-radius: 12px; border: 1px solid var(--gray); margin-bottom: 14px; overflow: hidden; }
+.report-section-title { padding: 14px 20px; font-weight: 700; font-size: 13px; border-bottom: 1px solid var(--gray); background: var(--off-white); letter-spacing: 0.3px; }
+.report-row { display: flex; align-items: flex-start; justify-content: space-between; padding: 10px 20px; border-bottom: 0.5px solid var(--gray); gap: 12px; }
+.report-row:last-child { border-bottom: none; }
+.report-row-left { flex: 1; }
+.report-row-label { font-size: 13px; font-weight: 300; color: var(--charcoal); }
+.report-row-note { font-size: 11px; color: var(--slate); margin-top: 3px; font-style: italic; }
+.report-row-obj-label { font-size: 11px; font-weight: 300; color: var(--slate); padding-left: 20px; }
+.report-actions { display: flex; gap: 10px; margin-top: 6px; flex-wrap: wrap; }
+.action-btn { padding: 11px 20px; border: 1.5px solid var(--gray); border-radius: 8px; cursor: pointer; font-family: 'Montserrat', sans-serif; font-weight: 500; font-size: 12px; background: var(--white); color: var(--charcoal); transition: border-color 0.15s; }
+.action-btn:hover { border-color: var(--cyan); }
+.action-btn.primary-btn { background: var(--cyan); border-color: var(--cyan); color: var(--charcoal); font-weight: 700; }
+</style>
+</head>
+<body>
+
+<div class="app-header">
+  <div>
+    <div class="wordmark"><span class="w1">CURRENT</span> <span class="w2">HOME</span></div>
+    <div class="header-tag">Sales Boot Camp — Scoring Platform</div>
+  </div>
+  <div id="header-session-info">
+    <div class="hsi-name" id="hsi-name"></div>
+    <div id="hsi-sub"></div>
+  </div>
+</div>
+
+<div class="screens">
+
+  <!-- SCREEN 1: SETUP -->
+  <div class="screen active" id="screen-setup">
+    <div class="setup-wrap">
+      <div class="setup-card">
+        <div class="setup-title">Start a Scoring Session</div>
+        <div class="setup-sub">Fill in the details below to begin scoring a rep's boot camp session.</div>
+        <div class="field-group">
+          <label class="field-label">Rep Name</label>
+          <input class="field-input" id="inp-rep" type="text" placeholder="e.g. Marcus Johnson" oninput="checkReady()" />
+        </div>
+        <div class="field-group">
+          <label class="field-label">Manager / Coach</label>
+          <input class="field-input" id="inp-manager" type="text" placeholder="e.g. TJ" oninput="checkReady()" />
+        </div>
+        <div class="field-group">
+          <label class="field-label">Session</label>
+          <div class="session-pills">
+            <div class="pill" id="pill-1" onclick="selectSession(1)"><span class="pill-num">1</span>Baseline</div>
+            <div class="pill" id="pill-2" onclick="selectSession(2)"><span class="pill-num">2</span>Focused</div>
+            <div class="pill" id="pill-3" onclick="selectSession(3)"><span class="pill-num">3</span>Certify</div>
+          </div>
+        </div>
+        <div class="field-group">
+          <label class="field-label">Date</label>
+          <input class="field-input" id="inp-date" type="date" />
+        </div>
+        <button class="btn-primary" id="start-btn" onclick="startSession()" disabled>BEGIN SCORING SESSION &#8594;</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- SCREEN 2: SCORING -->
+  <div class="screen" id="screen-scoring">
+    <div class="progress-bar-wrap">
+      <span id="progress-text" style="white-space:nowrap;">0 of 30 steps scored</span>
+      <div class="progress-bar-outer"><div class="progress-bar-inner" id="progress-fill" style="width:0%"></div></div>
+      <span id="progress-pct" style="white-space:nowrap;">0%</span>
+    </div>
+    <div class="scoring-layout">
+      <div class="sidebar" id="sidebar"></div>
+      <div class="main-panel-wrap">
+        <div class="main-panel" id="main-panel"></div>
+      </div>
+
+      <!-- RIGHT RAIL: tabbed Profile + Score Summary -->
+      <div class="right-rail">
+        <div class="rail-tabs">
+          <button class="rail-tab active" id="tab-profile" onclick="switchRailTab('profile')">Customer Profile</button>
+          <button class="rail-tab" id="tab-score" onclick="switchRailTab('score')">Score Summary</button>
+        </div>
+
+        <!-- Profile pane -->
+        <div class="rail-pane active" id="pane-profile">
+          <div class="profile-inner" id="profile-content"></div>
+        </div>
+
+        <!-- Score summary pane -->
+        <div class="rail-pane" id="pane-score">
+          <div class="summary-inner">
+            <div class="summary-title">Score Summary</div>
+            <div class="tier-row"><span class="tier-lbl c-cyan">Excellent</span><span class="tier-val c-cyan" id="cnt-excellent">0</span></div>
+            <div class="tier-row"><span class="tier-lbl c-amber">Fair</span><span class="tier-val c-amber" id="cnt-fair">0</span></div>
+            <div class="tier-row"><span class="tier-lbl c-red">Needs Work</span><span class="tier-val c-red" id="cnt-needs">0</span></div>
+            <div class="tier-row"><span class="tier-lbl c-gray">Did Not Address</span><span class="tier-val c-gray" id="cnt-dna">0</span></div>
+            <div class="tier-row" style="border-bottom:none;"><span class="tier-lbl c-slate">Unscored</span><span class="tier-val c-slate" id="cnt-unscored">30</span></div>
+            <div class="recording-box">
+              <div class="recording-box-label">Recording / Drive Link</div>
+              <input class="recording-input" id="recording-link" type="text" placeholder="Paste link here..." />
+            </div>
+            <div class="priority-count" id="priority-count"></div>
+            <div class="commitments-box">
+              <div class="commitments-box-label">&#9733; Field Commitments</div>
+              <textarea class="commitments-textarea" id="field-commitments" placeholder="Enter the rep's specific field commitments before generating their summary..."></textarea>
+            </div>
+            <button class="gen-summary-btn" onclick="generateRepSummary()">GENERATE REP SUMMARY &#8594;</button>
+            <button class="finish-btn" style="margin-top:8px;" onclick="finishSession()">VIEW FULL REPORT &#8594;</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SCREEN 3: REPORT -->
+  <div class="screen" id="screen-report">
+    <div class="report-wrap">
+      <div class="report-actions" style="margin-bottom:8px;">
+        <button class="action-btn" onclick="goBack()">&#8592; Back to Session</button>
+        <button class="action-btn primary-btn" onclick="exportReport()">Export (Copy to Clipboard)</button>
+        <button class="action-btn" onclick="newSession()">New Session</button>
+      </div>
+      <div id="sync-status" style="font-size:12px;font-weight:500;padding:4px 2px 16px;color:var(--slate);"></div>
+      <div class="report-header-card">
+        <div class="report-rep-name" id="rpt-name"></div>
+        <div class="report-meta" id="rpt-meta"></div>
+        <div class="score-totals">
+          <div class="score-total-box"><div class="score-total-num c-cyan" id="rpt-excellent">0</div><div class="score-total-lbl">Excellent</div></div>
+          <div class="score-total-box"><div class="score-total-num" style="color:var(--amber)" id="rpt-fair">0</div><div class="score-total-lbl">Fair</div></div>
+          <div class="score-total-box"><div class="score-total-num" style="color:var(--red)" id="rpt-needs">0</div><div class="score-total-lbl">Needs Work</div></div>
+          <div class="score-total-box"><div class="score-total-num" style="color:#aaa" id="rpt-dna">0</div><div class="score-total-lbl">Did Not Address</div></div>
+        </div>
+      </div>
+      <div id="rpt-body"></div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+const SCORE_KEYS = ['excellent','fair','needs','dna'];
+const SCORE_LABELS = ['Excellent','Fair','Needs Work','Did Not Address'];
+const SCORE_FULL_LABELS = ['Excellent','Fair','Needs Improvement','Did Not Address'];
+
+// ─── CUSTOMER PROFILES ────────────────────────────────────────────────────────
+const PROFILES = {
+  1: {
+    name: "The Navarro Family",
+    difficulty: "Session 1 — Moderate Resistance",
+    tagline: "New homeowners, stretched thin after moving. Both present. Closeable with the right A-Call.",
+    age: "Mid-30s, family of five",
+    location: "26343 Roland Road, Marietta, CA",
+    home: "Recently purchased home. Just relocated from San Diego. Family of 5 — two adults, three kids.",
+    usage: "Only one bill received: 450 kWh. Rep MUST use the New Homeowner Energy Auditing Tool to project annual usage. Target projected usage: 14,500 kWh/year. Key load drivers: 2 refrigerators, heavy A/C and laundry use, one spouse works from home. No EVs.",
+    personality: "Both husband and wife are present — engage both equally throughout the presentation. They are organized, financially conscious people who like to plan ahead. The move from San Diego was a big investment and they are feeling it. They are not hostile, but they are careful with money right now and will hesitate before committing to anything that feels like another large financial decision on top of the move. The wife tends to ask the savings and budget questions. The husband is more interested in the practical details — warranties, what happens if something breaks, long-term protection.",
+    energy_situation: "They have only one bill from this home — 450 kWh, which is far below their actual projected usage. The rep must proactively explain why that number is low (new home, may not have fully settled in, seasonal variance) and walk through the New Homeowner Energy Auditing Tool to build credibility. The 14,500 kWh projection should be derived from the household load profile: 2 fridges, heavy A/C in the Inland Empire heat, laundry for a family of 5, and a full-time work-from-home setup. Coming from San Diego, they are not used to the extreme summer heat in this area — this is an opportunity to paint a picture of what their first full summer bill will look like without solar.",
+    coaching: "The key coaching objective for Session 1 is whether the rep properly executes the New Homeowner Energy Auditing Tool instead of trying to use the 450 kWh bill as-is. A weak rep will either use the low number (making the savings look small) or skip the tool entirely. A strong rep builds the projection collaboratively with the customer, turning it into a discovery moment. Watch also for whether the rep addresses both spouses — if they talk only to one, the other will disengage. Tie downs should come naturally from the Doctor Solar conversation given this family's situation.",
+    tiedowns: [
+      "They like to budget and plan their finances — solar locks in a predictable monthly payment",
+      "Savings are especially important right now — they just spent significantly on the move",
+      "Strong warranties matter — they want protection and to know they won't inherit a problem",
+      "Transferability — they plan to move in about 10 years and want to know the system transfers",
+      "The promotional offer (promo pricing) resonates — they are low on funds post-move and want to feel they got a deal"
+    ],
+    objections: [
+      { label: "OBJ-9", text: "\"We've only gotten one bill — we want to wait and see another one first\"", type: "primary", guidance: "Raise this early, right when the rep pulls up the bill. Deliver it matter-of-factly: 'We've honestly only been here two months — we only have one bill and it seems really low. I'm not sure we have enough information yet.' This is the trap. A strong rep uses the New Homeowner Auditing Tool to solve it. A weak rep either agrees and stalls or uses the low number without addressing it. Don't let the rep off the hook — if they skip the tool, push back: 'But how do we know what our real usage will be?'" },
+      { label: "OBJ-1", text: "\"We need to think about it — we just have a lot going on with the move\"", type: "primary", guidance: "Raise this at the assumptive close. It's genuine — they are overwhelmed and this is one more decision. Don't play it as resistant or combative. Play it tired and a little stressed. The rep needs to acknowledge the weight of the situation before pushing forward. If the rep jumps straight into rebuttal mode, stay firm. The Feedback Close should land well here if executed with empathy." },
+      { label: "OBJ-6", text: "\"We're planning to get another bid — we just haven't done it yet\"", type: "primary", guidance: "This is a future objection, not a current one — they don't have any other bids yet. Play it as a plan, not a commitment: 'We figured we'd shop around a little before deciding.' The rep's job is to make the case for deciding today rather than waiting. The A-Call is the mechanism that should close this — the promo creates a reason not to wait." },
+      { label: "OBJ-4", text: "\"We're probably only going to be in this house about ten years\"", type: "secondary", guidance: "Bring this up during Program Selection or when the rep presents the 25-year savings. Deliver it casually, not as a big objection — more like a practical thought: 'I mean, we'll probably move again in ten years or so.' The rep should address transferability of the PPA agreement and the value it adds to the home resale. This is also a natural tie-down moment — confirm they'd want the system to transfer cleanly." }
+    ],
+    closer_notes: "This family is closeable — but only after a proper Higher Authority Call. The A-Call must create a promo offer framed as time-sensitive and specifically tied to their situation (new homeowners, post-move budget). The discount or promo should feel like it was designed for them. If the rep has executed Doctor Solar well and captured the 5 tie downs above, the close should flow naturally. Do NOT move forward without the A-Call — per the profile design, this customer does not close on the assumptive close alone."
+  },
+  2: {
+    name: "Robert Holt",
+    difficulty: "Session 2 — Elevated Resistance",
+    tagline: "Paid lead. Spouse not home. Two bids in hand, one more scheduled. Undecided on PPA vs. prepaid.",
+    age: "Late 40s",
+    location: "33311 Wind Tree Avenue, Wildomar, CA",
+    home: "Paid lead — Robert initiated contact. Spouse is not present for this meeting.",
+    usage: "Base usage: 10,000 kWh/year. Add Tesla Model 3 EV: ~12,000 miles/year. TARGET TOTAL: 15,000 kWh/year. Rep must ask about the EV and size to 15,000 kWh — a rep who designs to 10,000 kWh will be undersized and exposed during comparison.",
+    personality: "Robert is engaged and genuinely interested in solar — he called in himself. But he has been through two full presentations already and has a third scheduled. He knows how the pitch flows and will get impatient if the rep rushes past his specific situation or treats him like a first-time customer. He is direct and will ask pointed questions about the competing bids. His wife is not home, which he will use as a genuine reason to pause at close — this is not a deflection, he actually wants her involved. He is openly undecided between PPA and prepaid and needs to be educated on the difference, not just sold one. He has heard negative things about solar installers and needs to be sold on Current Home as a company, not just the product.",
+    energy_situation: "Robert currently uses 10,000 kWh/year but the Tesla significantly changes his consumption profile — the correct system is sized for 15,000 kWh total. He has two bids: (1) Sunrun PPA at 17.5¢/kWh, 3.5% escalator — $175/month solar + $65/month battery = $240/month total. (2) Unknown installer — Prepaid PPA, 15,000 kWh system, 2 batteries, $30,000 one-time ($327/month if financed) — does NOT include solar insurer. He has a third appointment still scheduled. He is actively weighing PPA vs. prepaid and has not decided. The rep who educates him clearly on total savings of monthly PPA vs. prepaid will earn his trust and differentiate from the other bids.",
+    competitive_intel: "Bid 1 — Sunrun: PPA, 17.5¢/kWh, 3.5% escalator. $175/month solar + $65/month battery = $240/month total. | Bid 2 — Unknown installer: Prepaid PPA, 15,000 kWh, 2 batteries, $30,000 one-time ($327/month financed). Does NOT include solar insurer. | Bid 3 — Scheduled, not yet received. | Key gap to exploit: unknown installer has no solar insurer — this is a liability exposure Robert should understand. Current Home's installer reputation and warranty backing are direct differentiators.",
+    coaching: "Four key tests: (1) EV load — does the rep proactively ask about the Tesla and size to 15,000 kWh? (2) PPA vs. prepaid education — does the rep walk Robert through total savings of each option clearly, not just push one? (3) Installer credibility — Robert has heard bad things about solar companies. The rep must build genuine value in Current Home as the installer, not just the product. Specifically address the unknown installer's lack of solar insurer. (4) Spouse handling — the rep should proactively acknowledge the spouse early in the presentation so it doesn't blindside them at close. A rep who ignores the spouse all session and gets hit with it at the assumptive close has failed this test regardless of how good the numbers are.",
+    tiedowns: [
+      "System is correctly sized for 15,000 kWh — accounts for current usage AND the Tesla EV load",
+      "Current Home's installer reputation and backing — builds value over an unknown installer with no solar insurer",
+      "Total savings comparison: monthly PPA vs. prepaid — rep educates so Robert can make an informed choice",
+      "No coverage gaps — unlike Bid 2, Current Home's proposal includes solar insurer and full protection",
+      "He controls the timeline — committing now (pending his wife) lets him cancel the third appointment on his terms"
+    ],
+    objections: [
+      { label: "OBJ-2", text: "\"I need to speak with my wife before I commit to anything\"", type: "primary", guidance: "This is Robert's primary close objection and it is genuine — not a stall. Deploy at the assumptive close. The TARGET OUTCOME for this session is NOT a same-day signature. It is: Robert verbally commits Current Home is his choice, agrees to cancel the third appointment, and the rep sets a firm in-person follow-up with both spouses present. A rep who tries to push past this objection with pressure will lose Robert's trust completely." },
+      { label: "OBJ-6", text: "\"I still have one more appointment scheduled — I feel like I should see it through\"", type: "primary", guidance: "Raise alongside or just after the spouse objection. Play it fair: 'I appreciate everything — I just feel like I should finish the process I started.' The win condition is Robert agreeing to cancel the third appointment because he's already found what he needs. The rep should make the case confidently, not desperately. The A-Call creates the offer that makes waiting feel like a loss, not a guarantee." },
+      { label: "OBJ-5", text: "\"I've heard some not-great things about solar companies in general\"", type: "primary", guidance: "Surface this during the Current Home Introduction — not as an attack, just a casual comment: 'I'll be honest, I've heard mixed things about solar installers. Some companies come and go.' This is the opening for the rep to differentiate Current Home on stability, backing, and warranty. If the rep gives a generic response or brushes past it, bring it back up later. A strong rep uses this moment to directly address the unknown installer's lack of solar insurer." },
+      { label: "OBJ-9", text: "\"I'm not sure if PPA or prepaid makes more sense for me\"", type: "secondary", guidance: "Raise during Program Selection: 'The second company offered me a prepaid option and it seemed interesting — how do I know which is the better move for me?' The rep must walk through a clear educational comparison — total cost of ownership, monthly cash flow, flexibility, what happens at the end of term. A rep who just picks one without explaining the tradeoff has missed the point of this profile." }
+    ],
+    closer_notes: "The target outcome is NOT a same-day signed agreement. Robert will not commit without his wife and that is correct. The win condition is: (1) Robert verbally confirms Current Home is his preferred choice, (2) he agrees to cancel the third scheduled appointment, and (3) the rep sets a firm in-person follow-up with both Robert and his wife present. A rep who walks out with that outcome has executed this session correctly. The A-Call should lock in the current program offer and frame the follow-up as 'holding this proposal for when your wife is here' — not a soft maybe."
+  },
+  3: {
+    name: "Diane Castillo",
+    difficulty: "Session 3 — Maximum Resistance",
+    tagline: "Every objection in the book. Highly emotional. Will test character, not just skill.",
+    age: "64",
+    location: "Moreno Valley, CA",
+    home: "3-bed/2-bath, owned 22 years, roof is 14 years old",
+    usage: "Avg. $175/month SCE bill. Usage: ~720 kWh/month. Standard tiered rate.",
+    personality: "Diane is a recently retired school principal. Sharp, direct, and protective of her finances and home. Her daughter warned her not to sign anything. She had a bad experience 3 years ago — signed up with a solar company that went out of business during permitting, leaving her in limbo for 8 months. She finally got out of the contract but the experience left her deeply distrustful. She agreed to this appointment because her bill has been rising, but she is armed with skepticism. She will be polite but will push hard on every commitment.",
+    energy_situation: "Her usage is on the lower end — this is a smaller system. The savings numbers won't be dramatic, which means the rep must sell value and trust, not just ROI. Her bill has gone from $130 to $175 in the last 3 years and she's noticed it. She's also been told by a friend that her roof might not be suitable — this is a planted concern.",
+    coaching: "This is the hardest profile. Diane will test emotional control and resilience. The rep cannot show any frustration, retreat, or passive language under any circumstances. The roof concern, the bad experience, and the daughter objection are layered on top of each other intentionally. A rep who loses their composure, gets defensive about other solar companies, or uses a single passive phrase will fail this session. The win condition is not just closing — it's staying sharp and confident through sustained pressure.",
+    objections: [
+      { label: "OBJ-5", text: "\"I've had a bad experience with solar before\"", type: "primary", guidance: "Drop this during the Current Home Introduction — early, before the rep has full momentum. Be specific: 'A company called SunBright or something — they disappeared during permitting. I was without resolution for 8 months.' Let the rep address it fully before continuing. If they brush past it, bring it up again later." },
+      { label: "OBJ-8", text: "\"I'm worried about my roof — I was told it might not be in good enough condition\"", type: "primary", guidance: "Raise this during the Property Walk Around. Plant hesitation: 'My friend said this part of the roof looks like it needs work. Would solar even work if the roof is bad?' Make the rep walk through this credibly. If they dismiss it, push back: 'How do you really know?'" },
+      { label: "OBJ-2", text: "\"My daughter told me not to sign anything today\"", type: "primary", guidance: "Use this at the assumptive close. This is not a negotiating objection — it's emotional. Diane is not trying to leverage a better deal. She's genuinely worried. The rep must acknowledge the emotion, not fight through it. Watch how the rep handles the Feedback Close — this is where character shows." },
+      { label: "OBJ-1", text: "\"I just need more time to think\"", type: "secondary", guidance: "Layer this after the daughter objection if the rep tries to close too quickly. Diane is not stalling — she's protecting herself. Keep the emotion present." },
+      { label: "OBJ-10", text: "\"Twenty-five years — I'll be 89 years old\"", type: "secondary", guidance: "Drop this casually during Program Selection with a slight laugh — it's real concern wrapped in humor. See how the rep responds to a lighter moment amid tension." }
+    ],
+    closer_notes: "Diane is closeable — but only if the rep has built genuine trust throughout. The bad experience objection must be addressed fully and early. The daughter concern cannot be dismissed or minimized. The A-Call should be framed around security and protection — not just price. A second price drop via Decision Call is available but Diane may still hesitate. The Ambassador Close is appropriate here as a final option and fits her personality — she values community and recognition."
+  }
 };
 
-// Step order matches STEPS array in web app (30 items)
-var STEP_IDS = [
-  's1','s2','s3','s4','s5','s6','s7a','s7b','s7c','s8',
-  's9','s10','s11','s12','s13','s14','s15','s16',
-  's17','s18','s19','s20',
-  'e1','e2','e3','e4','e5','e6','e7','e8'
+// ─── STEPS & OBJECTIONS ───────────────────────────────────────────────────────
+const STEPS = [
+  { id:'s1',  cat:'process', num:'1',  title:'Appointment Preparation', desc:'Rep prepares before arriving at the home. Includes pre-design (panel count, challenges), general property overview, review of appointment notes, and strategy development.' },
+  { id:'s2',  cat:'process', num:'2',  title:'Meet & Greet', desc:'Everything from leaving the vehicle to entering the home. Professional approach, strong first impression, initial greeting, and the ability to talk their way in if the customer attempts to cancel or refuse.' },
+  { id:'s3',  cat:'process', num:'3',  title:'Rapport Building', desc:'Begins immediately upon entering the home and continues throughout. Scored on how well rapport is established in the opening moments of the presentation.' },
+  { id:'s4',  cat:'process', num:'4',  title:'Agenda Set', desc:'Rep lays out the meeting agenda for the customer. When executed properly, this places the rep in the driver\'s seat of the sales meeting.' },
+  { id:'s5',  cat:'process', num:'5',  title:'Current Home Introduction', desc:'Full explanation of who Current Home is: company background, history, business structure, competitive differentiators, and positive online reviews (if not already seen).' },
+  { id:'s6',  cat:'process', num:'6',  title:'Doctor Solar — Needs & Goals', desc:'Open-ended discovery questioning that feels like a conversation, not an interrogation. Identify tie downs (customer-stated needs) that will be used to close. Customer verbalizes what they want from solar and how they want to use electricity going forward. Minimum 5 tie downs required.' },
+  { id:'s7a', cat:'process', num:'7a', title:'Bill Review — Usage Collection', desc:'Collect previous 12 months of electricity usage. If customer has not lived in the home 12+ months, use the New Homeowner Energy Auditing Tool to predict consumption.' },
+  { id:'s7b', cat:'process', num:'7b', title:'Bill Review — Utility Bill Education', desc:'Explain how the customer is billed for electricity. Build awareness and pain around their current situation. Present historical electricity price trends. Ask how much they believe energy prices will increase year over year (tie down).' },
+  { id:'s7c', cat:'process', num:'7c', title:'Bill Review — Long Term Costs', desc:'Enter usage and predicted price increase into the long-term savings calculator. Generate the 25-year cost of doing nothing. Built from the customer\'s own data and their own prediction — making it difficult to dispute.' },
+  { id:'s8',  cat:'process', num:'8',  title:'Solar 101', desc:'Explain how solar net metering will work on the customer\'s home. Bridges the gap between understanding the problem (bill review) and understanding the solution.' },
+  { id:'s9',  cat:'process', num:'9',  title:'Program Selection', desc:'Select and present the solar program (PPA or Prepaid) that best fits the customer based on everything learned in Doctor Solar and Bill Review. Presented as a tailored recommendation, not a generic pitch.' },
+  { id:'s10', cat:'process', num:'10', title:'Payment Escalator Selection', desc:'Educate and recommend: 3.5% Escalator (preferred — lower day-one payment, more popular) vs 0% Fixed (higher day-one, harder sell). Rep makes a clear, confident recommendation.' },
+  { id:'s11', cat:'process', num:'11', title:'Property Walk Around', desc:'Take the homeowner outside to review: main service panel (can it accommodate solar?), roof condition, and roof obstructions affecting panel placement.' },
+  { id:'s12', cat:'process', num:'12', title:'Solar Design Finalization', desc:'Finalize the solar design inside. Most design work done during preparation; this step confirms and adjusts based on walk around findings.' },
+  { id:'s13', cat:'process', num:'13', title:'Proposal Creation', desc:'Build the customer\'s proposal.' },
+  { id:'s14', cat:'process', num:'14', title:'Fireworks Show', desc:'Before presenting numbers, rep reminds the customer of ALL benefits discussed throughout the meeting. Re-anchors the customer to value before they see the price. Should build genuine excitement.' },
+  { id:'s15', cat:'process', num:'15', title:'Numbers Presentation', desc:'Present proposal in order: (1) remind of current monthly utility bill, (2) present the solar monthly payment, (3) enter solar payment into the long-term calculator and compare 25-year cost of solar vs. staying with the utility.' },
+  { id:'s16', cat:'process', num:'16', title:'Assumptive Close', desc:'Bring back all tie downs collected throughout the meeting. Walk through each tie down individually, confirm each was addressed, then assume the sale by asking for the business. Minimum 5 tie downs required.' },
+  { id:'s17', cat:'close',   num:'17', title:'Feedback Close', desc:'If customer does not move forward after assumptive close: rep pretends to surrender, asks for feedback (what they liked, disliked, what they\'ll spend the most time reviewing). Disarms the customer and surfaces hidden objections. Once addressed, returns to assumptive close.' },
+  { id:'s18', cat:'close',   num:'18', title:'Higher Authority Call (A-Call)', desc:'Rep calls manager who creates an opportunity to offer a discounted price. Discount must be framed as unique, unrepeatable, and time-sensitive to create urgency to move forward immediately.' },
+  { id:'s19', cat:'close',   num:'19', title:'Decision Call', desc:'Rep calls manager back to report the homeowner has decided not to move forward. Manager uses this to offer a second price drop. Rep hangs up and works to close with the new offer.' },
+  { id:'s20', cat:'close',   num:'20', title:'Ambassador Program Close', desc:'Final resort only — after A-Call and Decision Call exhausted. Offer discount in exchange for 5-star reviews, referrals, and yard sign during installation. Never time-sensitive. Framed as a value exchange.' },
+  { id:'e1',  cat:'elements', num:'E1', title:'Solar Design Quality', desc:'Two dimensions: (1) Technical accuracy — correct panel count, proper placement, design challenges addressed. (2) Presentation quality — how clearly and confidently the rep explains the design to the customer.' },
+  { id:'e2',  cat:'elements', num:'E2', title:'Energy & Enthusiasm', desc:'Rep\'s overall energy level, presence, and conviction throughout the entire appointment. Key behaviors: commanding tone, engaged body language, consistent pace, genuine belief in what\'s being presented. Identified as a primary driver of the current slump.' },
+  { id:'e3',  cat:'elements', num:'E3', title:'Physical Appearance', desc:'Business casual standard: clean and wrinkle-free clothing, bathed and groomed, hair styled, fresh breath.' },
+  { id:'e4',  cat:'elements', num:'E4', title:'Verbiage / Language', desc:'Primary focus is the ABSENCE of passive language. Red flag phrases: "if you decide to move forward," "if this is something you\'re interested in," "I don\'t want to pressure you." These signal low confidence and give customers permission to disengage.' },
+  { id:'e5',  cat:'elements', num:'E5', title:'Objection Handling', isObjStep: true, desc:'Select the objections the customer raised during this session, then score each one individually.' },
+  { id:'e6',  cat:'elements', num:'E6', title:'Scheduled Be-Back Appointment', desc:'If the customer did not close today, did the rep secure a firm, scheduled in-person follow-up appointment before leaving? A vague "I\'ll call you" does not count. Rep must leave with a confirmed date, time, and commitment from the homeowner.' },
+  { id:'e7',  cat:'elements', num:'E7', title:'Did the Rep Create Pain?', desc:'Throughout the presentation, did the rep build genuine urgency and emotional awareness around the customer\'s current situation — rising utility costs, long-term exposure, opportunity cost of waiting? Pain creation is what makes the solution feel necessary, not optional. Scored on whether the rep identified pain points and used them effectively throughout, particularly in Bill Review and the Fireworks Show.' },
+  { id:'e8',  cat:'elements', num:'E8', title:'Use of a Promotion', desc:'Did the rep introduce and leverage a promotional offer at the appropriate moment in the presentation? The promo should be presented as exclusive, time-sensitive, and tied to the customer\'s specific situation — not dropped in randomly or used as a last-ditch effort. Scored on whether the rep used the promo strategically to create urgency and move the customer toward a decision.' },
 ];
 
-var OBJ_COUNT = 11;
+const OBJECTIONS = [
+  '"I need to think about it"',
+  '"I need to talk to my spouse / partner first"',
+  '"I don\'t see enough savings / the payment is too high"',
+  '"I\'m not going to be in this home long enough"',
+  '"I\'ve heard bad things about solar / had a bad experience"',
+  '"I want to get other quotes first"',
+  '"I need to talk to my financial advisor / accountant"',
+  '"The roof isn\'t in good enough condition"',
+  '"I haven\'t lived here long enough to know my full energy usage"',
+  '"Twenty-five years is too long of a commitment"',
+  '"I already have a competing quote that\'s better"',
+];
 
-// ── CORS helper ────────────────────────────────────────────
-function corsResponse(data) {
-  var output = ContentService.createTextOutput(JSON.stringify(data))
-    .setMimeType(ContentService.MimeType.JSON);
-  return output;
+const TOTAL_STEPS = STEPS.length;
+
+let state = {
+  rep: '', manager: '', session: null, date: '',
+  scores: {}, notes: {}, objRaised: {}, objScores: {},
+  priorities: {}, fieldCommitments: '',
+  activeStep: 's1', recordingLink: ''
+};
+
+// ─── SETUP ────────────────────────────────────────────────────────────────────
+function selectSession(n) {
+  state.session = n;
+  [1,2,3].forEach(i => document.getElementById('pill-'+i).classList.toggle('selected', i===n));
+  checkReady();
+}
+function checkReady() {
+  const r = document.getElementById('inp-rep').value.trim();
+  const m = document.getElementById('inp-manager').value.trim();
+  document.getElementById('start-btn').disabled = !(r && m && state.session);
+}
+document.getElementById('inp-date').value = new Date().toISOString().slice(0,10);
+
+function startSession() {
+  state.rep = document.getElementById('inp-rep').value.trim();
+  state.manager = document.getElementById('inp-manager').value.trim();
+  state.date = document.getElementById('inp-date').value;
+  document.getElementById('hsi-name').textContent = state.rep;
+  document.getElementById('hsi-sub').textContent = 'Session ' + state.session + ' · ' + state.manager;
+  document.getElementById('header-session-info').style.display = 'block';
+  showScreen('scoring');
+  renderAll();
+  renderProfile();
+  updateSummary();
 }
 
-// ── Main entry point ───────────────────────────────────────
-function doPost(e) {
+function showScreen(name) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById('screen-' + name).classList.add('active');
+}
+
+// ─── RAIL TABS ─────────────────────────────────────────────────────────────────
+function switchRailTab(tab) {
+  ['profile','score'].forEach(t => {
+    document.getElementById('tab-'+t).classList.toggle('active', t===tab);
+    document.getElementById('pane-'+t).classList.toggle('active', t===tab);
+  });
+}
+
+// ─── PROFILE RENDER ───────────────────────────────────────────────────────────
+function renderProfile() {
+  const p = PROFILES[state.session];
+  if (!p) return;
+
+  const diffColors = { 1: '#0DCCE8', 2: '#F5A623', 3: '#DC3545' };
+  const objRows = p.objections.map(o =>
+    '<div class="obj-pill ' + o.type + '">' +
+    '<div class="obj-pill-num">' + o.label + ' · ' + (o.type === 'primary' ? 'PRIMARY' : 'SECONDARY') + '</div>' +
+    o.text + '<div style="font-size:11px;color:var(--slate);margin-top:5px;line-height:1.5;">' + o.guidance + '</div>' +
+    '</div>'
+  ).join('');
+
+  document.getElementById('profile-content').innerHTML =
+    '<div class="profile-header">' +
+    '<div class="profile-difficulty" style="color:' + diffColors[state.session] + '">' + p.difficulty + '</div>' +
+    '<div class="profile-name">' + p.name + '</div>' +
+    '<div class="profile-tagline">' + p.tagline + '</div>' +
+    '</div>' +
+    '<div class="profile-body">' +
+
+    '<div class="profile-section">' +
+    '<div class="profile-section-label">At a Glance</div>' +
+    '<div class="profile-stat-grid">' +
+    '<div class="profile-stat"><div class="profile-stat-label">Age</div><div class="profile-stat-val">' + p.age + '</div></div>' +
+    '<div class="profile-stat"><div class="profile-stat-label">Location</div><div class="profile-stat-val" style="font-size:11px;">' + p.location + '</div></div>' +
+    '<div class="profile-stat" style="grid-column:span 2"><div class="profile-stat-label">Home</div><div class="profile-stat-val" style="font-size:11px;font-weight:500;">' + p.home + '</div></div>' +
+    '<div class="profile-stat" style="grid-column:span 2"><div class="profile-stat-label">Energy Usage</div><div class="profile-stat-val" style="font-size:11px;font-weight:500;">' + p.usage + '</div></div>' +
+    '</div></div>' +
+
+    '<div class="profile-section">' +
+    '<div class="profile-section-label">Personality</div>' +
+    '<div class="profile-text">' + p.personality + '</div>' +
+    '</div>' +
+
+    '<div class="profile-section">' +
+    '<div class="profile-section-label">Energy Situation</div>' +
+    '<div class="profile-text">' + p.energy_situation + '</div>' +
+    '</div>' +
+
+    (p.competitive_intel ? (
+    '<div class="profile-section">' +
+    '<div class="profile-section-label">Competitive Intelligence</div>' +
+    '<div class="coaching-note" style="background:#FFF8E6;border-color:var(--amber);color:#7a5500;">' +
+    '<div class="coaching-note-label" style="color:#b07a00;">Competing Bids on the Table</div>' +
+    p.competitive_intel + '</div>' +
+    '</div>'
+    ) : '') +
+
+    '<div class="profile-section">' +
+    '<div class="profile-section-label">Key Tie Downs to Listen For</div>' +
+    '<div class="obj-pill-list">' +
+    (p.tiedowns || []).map((td, i) =>
+      '<div class="obj-pill" style="border-left-color:var(--cyan);"><div class="obj-pill-num">TIE DOWN ' + (i+1) + '</div>' + td + '</div>'
+    ).join('') +
+    '</div></div>' +
+
+    '<div class="profile-section">' +
+    '<div class="profile-section-label">Coaching Notes — What to Watch For</div>' +
+    '<div class="coaching-note"><div class="coaching-note-label">Manager Guidance</div>' + p.coaching + '</div>' +
+    '</div>' +
+
+    '<div class="profile-section">' +
+    '<div class="profile-section-label">Objections to Raise</div>' +
+    '<div class="obj-pill-list">' + objRows + '</div>' +
+    '</div>' +
+
+    '<div class="profile-section">' +
+    '<div class="profile-section-label">Win Condition</div>' +
+    '<div class="coaching-note"><div class="coaching-note-label">How This Rep Closes</div>' + p.closer_notes + '</div>' +
+    '</div>' +
+
+    '</div>';
+}
+
+// ─── SIDEBAR & MAIN PANEL ────────────────────────────────────────────────────
+function renderAll() { renderSidebar(); renderMain(); }
+
+function renderSidebar() {
+  const cats = [
+    { label: 'Process Steps (1-16)', filter: s => s.cat === 'process' },
+    { label: 'Closing Sequence (17-20)', filter: s => s.cat === 'close' },
+    { label: 'Presentation Elements', filter: s => s.cat === 'elements' },
+  ];
+  let html = '';
+  cats.forEach(cat => {
+    html += '<div class="sidebar-section"><div class="sidebar-section-label">' + cat.label + '</div>';
+    STEPS.filter(cat.filter).forEach(step => {
+      const sc = state.scores[step.id];
+      const active = state.activeStep === step.id ? 'active' : '';
+      html += '<div class="sidebar-item ' + active + '" id="sb-' + step.id + '" onclick="setActive(\'' + step.id + '\')">' +
+        '<div class="sidebar-dot ' + (sc || '') + '"></div>' +
+        '<span>' + step.num + '. ' + step.title + '</span></div>';
+    });
+    html += '</div>';
+  });
+  document.getElementById('sidebar').innerHTML = html;
+}
+
+function renderMain() {
+  const sessionDesc = { 1: 'The Navarro Family · 26343 Roland Rd, Marietta', 2: 'Robert Holt · 33311 Wind Tree Ave, Wildomar', 3: 'Profile 3 — TBD' };
+  let html = '<div class="session-banner"><div>' +
+    '<div class="session-banner-name">' + state.rep + '</div>' +
+    '<div class="session-banner-info">Playing: ' + sessionDesc[state.session] + ' · Manager: ' + state.manager + '</div>' +
+    '</div><div class="session-badge">SESSION ' + state.session + '</div></div>';
+  const sections = [
+    { label: 'Sales Process Steps (1-16)', steps: STEPS.filter(s => s.cat === 'process') },
+    { label: 'Closing Sequence (17-20)', steps: STEPS.filter(s => s.cat === 'close') },
+    { label: 'Presentation Elements', steps: STEPS.filter(s => s.cat === 'elements') },
+  ];
+  sections.forEach(sec => {
+    html += '<div class="section-divider">' + sec.label + '</div>';
+    sec.steps.forEach(step => { html += buildStepCard(step); });
+  });
+  document.getElementById('main-panel').innerHTML = html;
+}
+
+function buildStepCard(step) {
+  const sc = state.scores[step.id];
+  const badgeClass = sc ? 'badge-' + sc : 'badge-unscored';
+  const badgeLabel = sc ? SCORE_LABELS[SCORE_KEYS.indexOf(sc)] : 'Unscored';
+  const isActive = state.activeStep === step.id;
+  const notes = state.notes[step.id] || '';
+  const isPriority = state.priorities[step.id] || false;
+  let scoreButtons = SCORE_KEYS.map((key, i) =>
+    '<button class="score-btn ' + (sc === key ? 'sel-' + key : '') + '" onclick="doScore(\'' + step.id + '\',\'' + key + '\')">' + SCORE_LABELS[i] + '</button>'
+  ).join('');
+  let extra = '';
+  if (step.isObjStep) {
+    extra = '<div style="margin-top:14px;">' +
+      '<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:var(--slate);margin-bottom:8px;">Objections Raised During Session</div>' +
+      '<div class="obj-grid">' +
+      OBJECTIONS.map((obj, i) => {
+        const raised = state.objRaised[i];
+        const os = state.objScores[i];
+        return '<div class="obj-row">' +
+          '<label class="obj-check-label"><input type="checkbox" ' + (raised ? 'checked' : '') + ' onchange="toggleObj(' + i + ', this.checked)"> ' + obj + '</label>' +
+          (raised ? '<div class="obj-score-row">' +
+            SCORE_KEYS.map((k, j) => '<button class="obj-btn ' + (os === k ? 'sel-' + k : '') + '" onclick="scoreObj(' + i + ',\'' + k + '\')">' + SCORE_LABELS[j] + '</button>').join('') +
+            '</div>' : '') + '</div>';
+      }).join('') + '</div></div>';
+  }
+  return '<div class="step-card ' + (isActive ? 'is-active' : '') + '" id="step-' + step.id + '">' +
+    '<div class="step-card-header" onclick="setActive(\'' + step.id + '\')">' +
+    '<div class="step-num">' + step.num + '</div>' +
+    '<div class="step-title">' + step.title + '</div>' +
+    '<div class="step-badge ' + badgeClass + '">' + badgeLabel + '</div>' +
+    '<button class="priority-flag ' + (isPriority ? 'flagged' : '') + '" onclick="event.stopPropagation();togglePriority(\'' + step.id + '\')" title="Flag as priority focus area">&#9733; ' + (isPriority ? 'Priority' : 'Flag') + '</button>' +
+    '</div>' +
+    '<div class="step-card-body">' +
+    (isPriority ? '<div class="priority-banner visible">&#9733; PRIORITY FOCUS — Will appear in rep\'s session summary</div>' : '<div class="priority-banner"></div>') +
+    '<div class="step-desc">' + step.desc + '</div>' +
+    '<div class="score-row">' + scoreButtons + '</div>' +
+    extra +
+    '<textarea class="notes-area" placeholder="Coach notes (optional)..." onchange="setNote(\'' + step.id + '\', this.value)">' + notes + '</textarea>' +
+    '</div></div>';
+}
+
+function setActive(id) {
+  state.activeStep = id;
+  renderSidebar();
+  const el = document.getElementById('step-' + id);
+  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  document.querySelectorAll('.step-card').forEach(c => c.classList.remove('is-active'));
+  if (el) el.classList.add('is-active');
+}
+
+function doScore(stepId, key) {
+  state.scores[stepId] = key;
+  const card = document.getElementById('step-' + stepId);
+  if (card) {
+    card.querySelectorAll('.score-btn').forEach((btn, i) => {
+      btn.className = 'score-btn ' + (i === SCORE_KEYS.indexOf(key) ? 'sel-' + key : '');
+    });
+    const badge = card.querySelector('.step-badge');
+    if (badge) { badge.className = 'step-badge badge-' + key; badge.textContent = SCORE_LABELS[SCORE_KEYS.indexOf(key)]; }
+  }
+  const dot = document.querySelector('#sb-' + stepId + ' .sidebar-dot');
+  if (dot) dot.className = 'sidebar-dot ' + key;
+  updateSummary();
+}
+
+function setNote(stepId, val) { state.notes[stepId] = val; }
+
+function togglePriority(stepId) {
+  state.priorities[stepId] = !state.priorities[stepId];
+  const step = STEPS.find(s => s.id === stepId);
+  const el = document.getElementById('step-' + stepId);
+  if (el) el.outerHTML = buildStepCard(step);
+  // Update priority count display
+  const count = Object.values(state.priorities).filter(Boolean).length;
+  const pc = document.getElementById('priority-count');
+  if (pc) {
+    if (count === 0) { pc.textContent = ''; }
+    else if (count > 3) { pc.textContent = '⚠ ' + count + ' items flagged — max 3 recommended'; pc.style.color = 'var(--red)'; }
+    else { pc.textContent = '★ ' + count + ' priority item' + (count > 1 ? 's' : '') + ' flagged'; pc.style.color = 'var(--amber)'; }
+  }
+}
+
+async function generateRepSummary() {
+  state.recordingLink = document.getElementById('recording-link').value.trim();
+  state.fieldCommitments = document.getElementById('field-commitments').value.trim();
+
+  const priorityIds = Object.keys(state.priorities).filter(id => state.priorities[id]);
+  if (priorityIds.length === 0) {
+    alert('Please flag at least one priority focus item before generating the rep summary. Use the ★ Flag button on any step card.');
+    return;
+  }
+  if (!state.fieldCommitments) {
+    alert('Please enter the rep\'s field commitments before generating the summary.');
+    return;
+  }
+
+  if (!WEB_APP_URL || WEB_APP_URL === 'YOUR_APPS_SCRIPT_URL_HERE') {
+    alert('Apps Script URL not configured. Cannot generate Google Doc.');
+    return;
+  }
+
+  const btn = document.querySelector('.gen-summary-btn');
+  btn.textContent = 'GENERATING...';
+  btn.disabled = true;
+
+  const p = PROFILES[state.session];
+  const priorityItems = priorityIds.map(id => {
+    const step = STEPS.find(s => s.id === id);
+    return { id, title: step ? step.num + '. ' + step.title : id, score: state.scores[id] || 'unscored', note: state.notes[id] || '' };
+  });
+
+  const payload = {
+    action: 'createRepSummary',
+    rep: state.rep, manager: state.manager, session: state.session,
+    date: state.date, profileName: p ? p.name : '',
+    scores: state.scores, notes: state.notes,
+    objRaised: state.objRaised, objScores: state.objScores,
+    priorities: priorityItems, fieldCommitments: state.fieldCommitments,
+    recordingLink: state.recordingLink,
+  };
+
   try {
-    var payload = JSON.parse(e.postData.contents);
-    if (payload.action === 'createRepSummary') {
-      var docUrl = createRepSummary(payload);
-      return corsResponse({ status: 'success', docUrl: docUrl, message: 'Rep summary created.' });
+    const res = await fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify(payload) });
+    const json = await res.json();
+    if (json.status === 'success' && json.docUrl) {
+      btn.textContent = '✓ REP SUMMARY CREATED';
+      btn.style.background = 'var(--green)';
+      // Show link
+      const pc = document.getElementById('priority-count');
+      if (pc) {
+        pc.innerHTML = '✓ <a href="' + json.docUrl + '" target="_blank" style="color:var(--cyan);font-weight:700;">Open Rep Summary Doc</a>';
+        pc.style.color = 'var(--green)';
+      }
+    } else {
+      throw new Error(json.message || 'Unknown error');
     }
-    var result = writeScorecard(payload);
-    return corsResponse({ status: 'success', message: result });
   } catch(err) {
-    return corsResponse({ status: 'error', message: err.toString() });
+    btn.textContent = 'GENERATE REP SUMMARY →';
+    btn.disabled = false;
+    alert('Could not create Google Doc: ' + err.message + '\n\nUse Export (Copy to Clipboard) as a backup.');
   }
 }
 
-// Allow preflight OPTIONS from browser
-function doGet(e) {
-  return corsResponse({ status: 'ok', message: 'Boot Camp Scoring API is live.' });
+function toggleObj(i, checked) {
+  state.objRaised[i] = checked;
+  if (!checked) delete state.objScores[i];
+  const step = STEPS.find(s => s.id === 'e5');
+  const el = document.getElementById('step-e5');
+  if (el) el.outerHTML = buildStepCard(step);
+  updateSummary();
 }
 
-// ── Core write function ────────────────────────────────────
-function writeScorecard(data) {
-  var ss  = SpreadsheetApp.getActiveSpreadsheet();
-  var rep = (data.rep || '').trim();
-
-  if (!rep) throw new Error('Rep name is missing from payload.');
-
-  // Find rep's sheet — exact match first, then case-insensitive
-  var sheet = ss.getSheetByName(rep);
-  if (!sheet) {
-    var sheets = ss.getSheets();
-    for (var i = 0; i < sheets.length; i++) {
-      if (sheets[i].getName().toLowerCase() === rep.toLowerCase()) {
-        sheet = sheets[i];
-        break;
-      }
-    }
-  }
-  if (!sheet) {
-    throw new Error('No tab found for rep "' + rep + '". Please create the tab first by duplicating the Rep Template.');
-  }
-
-  // Determine session number (1, 2, or 3)
-  var sessionNum = parseInt(data.session, 10);
-  if (sessionNum < 1 || sessionNum > 3) throw new Error('Invalid session number: ' + sessionNum);
-
-  var startRow = SESSION_START_ROWS[sessionNum - 1];
-
-  // ── Write session header info ──────────────────────────
-  sheet.getRange(startRow + ROW_OFFSETS.date,          2).setValue(data.date    || '');
-  sheet.getRange(startRow + ROW_OFFSETS.manager,       2).setValue(data.manager || '');
-  sheet.getRange(startRow + ROW_OFFSETS.profile,       2).setValue(data.profileName || '');
-  sheet.getRange(startRow + ROW_OFFSETS.recordingLink, 2).setValue(data.recordingLink || '');
-
-  // ── Write step scores and notes ───────────────────────
-  var scores = data.scores || {};
-  var notes  = data.notes  || {};
-
-  for (var i = 0; i < STEP_IDS.length; i++) {
-    var stepId   = STEP_IDS[i];
-    var scoreRow = startRow + ROW_OFFSETS.stepsStart + i;
-
-    // Skip section header rows by accounting for them in the sheet layout
-    // The sheet has 3 section headers embedded (+5 at process, +23 at closing, +27 at elements)
-    // Adjust row for each section header we've passed
-    var headerOffset = 0;
-    if (i >= 18) headerOffset++; // closing header at step index 18
-    if (i >= 22) headerOffset++; // elements header at step index 22
-
-    var actualRow = startRow + ROW_OFFSETS.stepsStart + i + headerOffset;
-
-    var scoreVal = scores[stepId] || '';
-    var noteVal  = notes[stepId]  || '';
-
-    // Map web app score keys to full labels
-    var scoreLabel = mapScore(scoreVal);
-
-    sheet.getRange(actualRow, 3).setValue(scoreLabel); // C = score
-    sheet.getRange(actualRow, 5).setValue(noteVal);    // E = notes
-  }
-
-  // ── Write objection scores ─────────────────────────────
-  var objRaised = data.objRaised || {};
-  var objScores = data.objScores || {};
-
-  // Objection section headers add 2 more rows before obj rows
-  var objSectionOffset = 3; // 3 section headers before objections
-  var objNoteOffset    = 1; // 1 instruction note row
-
-  for (var j = 0; j < OBJ_COUNT; j++) {
-    var objRow = startRow + ROW_OFFSETS.stepsStart + STEP_IDS.length + objSectionOffset + objNoteOffset + j;
-
-    var raised = objRaised[j] ? 'Yes' : 'No';
-    var objScore = objScores[j] ? mapScore(objScores[j]) : (objRaised[j] ? '' : 'N/A');
-
-    sheet.getRange(objRow, 3).setValue(objScore); // C = score
-    sheet.getRange(objRow, 4).setValue(raised);   // D = raised?
-  }
-
-  // ── Update dashboard row for this rep ─────────────────
-  updateDashboard(ss, rep, sessionNum, data);
-
-  return 'Scorecard written successfully for ' + rep + ' — Session ' + sessionNum;
+function scoreObj(i, key) {
+  state.objScores[i] = key;
+  const step = STEPS.find(s => s.id === 'e5');
+  const el = document.getElementById('step-e5');
+  if (el) el.outerHTML = buildStepCard(step);
+  updateSummary();
 }
 
-// ── Rep Summary Google Doc Creator ────────────────────────
-function createRepSummary(data) {
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var ssFile = DriveApp.getFileById(ss.getId());
-  var parentFolder = ssFile.getParents().next();
+function updateSummary() {
+  let c = { excellent: 0, fair: 0, needs: 0, dna: 0 };
+  STEPS.forEach(s => { if (state.scores[s.id]) c[state.scores[s.id]]++; });
+  Object.values(state.objScores).forEach(s => { if (s) c[s]++; });
+  const scored = Object.keys(state.scores).length;
+  SCORE_KEYS.forEach(k => document.getElementById('cnt-' + k).textContent = c[k]);
+  document.getElementById('cnt-unscored').textContent = TOTAL_STEPS - scored;
+  const pct = Math.round((scored / TOTAL_STEPS) * 100);
+  document.getElementById('progress-fill').style.width = pct + '%';
+  document.getElementById('progress-text').textContent = scored + ' of ' + TOTAL_STEPS + ' steps scored';
+  document.getElementById('progress-pct').textContent = pct + '%';
+}
 
-  // Find or create "Rep Summaries" subfolder
-  var summaryFolder;
-  var folders = parentFolder.getFoldersByName('Rep Summaries');
-  if (folders.hasNext()) {
-    summaryFolder = folders.next();
-  } else {
-    summaryFolder = parentFolder.createFolder('Rep Summaries');
+// ─── APPS SCRIPT CONFIG ───────────────────────────────────────────────────────
+// PASTE YOUR GOOGLE APPS SCRIPT WEB APP URL HERE after deploying the script:
+const WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbw46Dd3XbdGIRXgteszv6EJrnn-s1ouv21Qu75kBz2UsKD_9sJgKatJTTpeJ3FN1EdePA/exec';
+
+function finishSession() {
+  state.recordingLink = document.getElementById('recording-link').value.trim();
+  postToSheets();
+  buildReport();
+  showScreen('report');
+}
+
+async function postToSheets() {
+  if (!WEB_APP_URL || WEB_APP_URL === 'YOUR_APPS_SCRIPT_URL_HERE') {
+    console.warn('Apps Script URL not configured — skipping Sheets sync.');
+    return;
   }
-
-  // Find or create rep subfolder
-  var repFolder;
-  var repFolders = summaryFolder.getFoldersByName(data.rep);
-  if (repFolders.hasNext()) {
-    repFolder = repFolders.next();
-  } else {
-    repFolder = summaryFolder.createFolder(data.rep);
-  }
-
-  // Build score summary counts
-  var scores = data.scores || {};
-  var counts = { excellent: 0, fair: 0, needs: 0, dna: 0 };
-  Object.values(scores).forEach(function(v) {
-    if (counts[v] !== undefined) counts[v]++;
-  });
-  var objScores = data.objScores || {};
-  Object.values(objScores).forEach(function(v) {
-    if (counts[v] !== undefined) counts[v]++;
-  });
-
-  // Create the Google Doc
-  var docTitle = data.rep + ' — Session ' + data.session + ' Summary (' + (data.date || 'Today') + ')';
-  var doc = DocumentApp.create(docTitle);
-  var body = doc.getBody();
-
-  // Move to rep folder
-  var docFile = DriveApp.getFileById(doc.getId());
-  repFolder.addFile(docFile);
-  DriveApp.getRootFolder().removeFile(docFile);
-
-  // ── Styles ──
-  var headerStyle = {};
-  headerStyle[DocumentApp.Attribute.FONT_FAMILY] = 'Arial';
-  headerStyle[DocumentApp.Attribute.FONT_SIZE] = 11;
-  headerStyle[DocumentApp.Attribute.BOLD] = false;
-  headerStyle[DocumentApp.Attribute.FOREGROUND_COLOR] = '#4A4A5A';
-
-  // ── Title block ──
-  body.clear();
-  var title = body.appendParagraph('CURRENT HOME — SALES BOOT CAMP');
-  title.setHeading(DocumentApp.ParagraphHeading.HEADING1);
-  title.editAsText().setFontFamily('Arial').setFontSize(18).setBold(true).setForegroundColor('#1A1A2E');
-
-  var subtitle = body.appendParagraph('Session ' + data.session + ' Scorecard Summary');
-  subtitle.editAsText().setFontFamily('Arial').setFontSize(14).setBold(false).setForegroundColor('#0DCCE8');
-
-  body.appendParagraph('');
-
-  // ── Session info table ──
-  var infoTable = body.appendTable([
-    ['Rep', data.rep || ''],
-    ['Manager', data.manager || ''],
-    ['Session', 'Session ' + data.session + ' — ' + (data.profileName || '')],
-    ['Date', data.date || ''],
-  ]);
-  infoTable.setBorderColor('#D9D9D9');
-  for (var i = 0; i < infoTable.getNumRows(); i++) {
-    infoTable.getCell(i, 0).editAsText().setFontFamily('Arial').setFontSize(10).setBold(true).setForegroundColor('#1A1A2E');
-    infoTable.getCell(i, 1).editAsText().setFontFamily('Arial').setFontSize(10).setBold(false).setForegroundColor('#4A4A5A');
-  }
-
-  body.appendParagraph('');
-
-  // ── Score summary ──
-  var scoreHeader = body.appendParagraph('SCORE SUMMARY');
-  scoreHeader.editAsText().setFontFamily('Arial').setFontSize(10).setBold(true).setForegroundColor('#1A1A2E');
-
-  var scoreTable = body.appendTable([
-    ['✦ Excellent', String(counts.excellent)],
-    ['Fair', String(counts.fair)],
-    ['Needs Improvement', String(counts.needs)],
-    ['Did Not Address', String(counts.dna)],
-  ]);
-  scoreTable.setBorderColor('#D9D9D9');
-  var scoreColors = ['#0DCCE8', '#F5A623', '#DC3545', '#888888'];
-  for (var j = 0; j < scoreTable.getNumRows(); j++) {
-    scoreTable.getCell(j, 0).editAsText().setFontFamily('Arial').setFontSize(10).setBold(true).setForegroundColor(scoreColors[j]);
-    scoreTable.getCell(j, 1).editAsText().setFontFamily('Arial').setFontSize(10).setBold(true).setForegroundColor(scoreColors[j]);
-  }
-
-  body.appendParagraph('');
-
-  // ── Priority focus items ──
-  var priorities = data.priorities || [];
-  if (priorities.length > 0) {
-    var priHeader = body.appendParagraph('★ PRIORITY FOCUS AREAS BEFORE NEXT SESSION');
-    priHeader.editAsText().setFontFamily('Arial').setFontSize(11).setBold(true).setForegroundColor('#F5A623');
-
-    var priNote = body.appendParagraph('These are the specific areas your manager identified as the highest priority for improvement. Focus your energy here before your next session.');
-    priNote.editAsText().setFontFamily('Arial').setFontSize(10).setBold(false).setForegroundColor('#4A4A5A').setItalic(true);
-    body.appendParagraph('');
-
-    priorities.forEach(function(item, idx) {
-      var scoreLabel = { excellent: 'Excellent', fair: 'Fair', needs: 'Needs Improvement', dna: 'Did Not Address', '': 'Unscored' };
-      var label = scoreLabel[item.score] || item.score;
-      var priRow = body.appendParagraph((idx + 1) + '. ' + item.title + ' — ' + label);
-      priRow.editAsText().setFontFamily('Arial').setFontSize(11).setBold(true).setForegroundColor('#1A1A2E');
-      if (item.note) {
-        var noteRow = body.appendParagraph('   Coach note: ' + item.note);
-        noteRow.editAsText().setFontFamily('Arial').setFontSize(10).setBold(false).setForegroundColor('#4A4A5A').setItalic(true);
-      }
-      body.appendParagraph('');
-    });
-  }
-
-  // ── Full scorecard ──
-  var scHeader = body.appendParagraph('FULL SCORECARD');
-  scHeader.editAsText().setFontFamily('Arial').setFontSize(11).setBold(true).setForegroundColor('#1A1A2E');
-
-  var STEP_LABELS = {
-    's1':'1. Appointment Preparation','s2':'2. Meet & Greet','s3':'3. Rapport Building',
-    's4':'4. Agenda Set','s5':'5. Current Home Introduction','s6':'6. Doctor Solar',
-    's7a':'7a. Bill Review — Usage Collection','s7b':'7b. Bill Review — Utility Education',
-    's7c':'7c. Bill Review — Long Term Costs','s8':'8. Solar 101','s9':'9. Program Selection',
-    's10':'10. Payment Escalator','s11':'11. Property Walk Around','s12':'12. Solar Design Finalization',
-    's13':'13. Proposal Creation','s14':'14. Fireworks Show','s15':'15. Numbers Presentation',
-    's16':'16. Assumptive Close','s17':'17. Feedback Close','s18':'18. A-Call',
-    's19':'19. Decision Call','s20':'20. Ambassador Close',
-    'e1':'E1. Solar Design Quality','e2':'E2. Energy & Enthusiasm','e3':'E3. Physical Appearance',
-    'e4':'E4. Verbiage / Language','e5':'E5. Objection Handling','e6':'E6. Be-Back Appointment',
-    'e7':'E7. Created Pain','e8':'E8. Use of Promotion'
+  const p = PROFILES[state.session];
+  const payload = {
+    rep:           state.rep,
+    manager:       state.manager,
+    session:       state.session,
+    date:          state.date,
+    profileName:   p ? p.name : '',
+    recordingLink: state.recordingLink,
+    scores:        state.scores,
+    notes:         state.notes,
+    objRaised:     state.objRaised,
+    objScores:     state.objScores,
   };
-  var SCORE_FULL = { excellent: 'Excellent', fair: 'Fair', needs: 'Needs Improvement', dna: 'Did Not Address' };
-  var SCORE_COLORS_MAP = { excellent: '#088FA3', fair: '#B07A00', needs: '#A02020', dna: '#555555' };
-
-  var stepIds = Object.keys(STEP_LABELS);
-  var tableData = [['Step', 'Score', 'Coach Notes']];
-  stepIds.forEach(function(id) {
-    var sc = scores[id] || '';
-    tableData.push([
-      STEP_LABELS[id],
-      SCORE_FULL[sc] || '—',
-      data.notes[id] || ''
-    ]);
-  });
-
-  var fullTable = body.appendTable(tableData);
-  fullTable.setBorderColor('#D9D9D9');
-  // Header row
-  for (var c = 0; c < 3; c++) {
-    fullTable.getCell(0, c).editAsText().setFontFamily('Arial').setFontSize(9).setBold(true).setForegroundColor('#FFFFFF').setBackgroundColor('#1A1A2E');
-  }
-  // Data rows
-  for (var r = 1; r < fullTable.getNumRows(); r++) {
-    var stepId = stepIds[r - 1];
-    var sc2 = scores[stepId] || '';
-    var scoreColor = SCORE_COLORS_MAP[sc2] || '#4A4A5A';
-    fullTable.getCell(r, 0).editAsText().setFontFamily('Arial').setFontSize(9).setBold(false).setForegroundColor('#1A1A2E');
-    fullTable.getCell(r, 1).editAsText().setFontFamily('Arial').setFontSize(9).setBold(true).setForegroundColor(scoreColor);
-    fullTable.getCell(r, 2).editAsText().setFontFamily('Arial').setFontSize(9).setBold(false).setForegroundColor('#4A4A5A').setItalic(true);
-  }
-
-  // ── Objections ──
-  var objRaised = data.objRaised || {};
-  var raisedIndexes = Object.keys(objRaised).filter(function(i) { return objRaised[i]; });
-  if (raisedIndexes.length > 0) {
-    body.appendParagraph('');
-    var objHeader = body.appendParagraph('OBJECTION HANDLING');
-    objHeader.editAsText().setFontFamily('Arial').setFontSize(11).setBold(true).setForegroundColor('#1A1A2E');
-    var OBJ_LABELS = [
-      '"I need to think about it"','"I need to talk to my spouse / partner"',
-      '"I don\'t see enough savings"','"I\'m not going to be in this home long enough"',
-      '"I\'ve heard bad things about solar"','"I want to get other quotes first"',
-      '"I need to talk to my financial advisor"','"The roof isn\'t in good enough condition"',
-      '"I haven\'t lived here long enough"','"Twenty-five years is too long"',
-      '"I already have a competing quote"'
-    ];
-    var objData = [['Objection', 'Score', 'Notes']];
-    raisedIndexes.forEach(function(i) {
-      var os = objScores[i] || '';
-      objData.push([OBJ_LABELS[i] || 'OBJ-' + (parseInt(i)+1), SCORE_FULL[os] || '—', data.notes['obj_' + i] || '']);
+  try {
+    const res = await fetch(WEB_APP_URL, {
+      method: 'POST',
+      body: JSON.stringify(payload),
     });
-    var objTable = body.appendTable(objData);
-    objTable.setBorderColor('#D9D9D9');
-    for (var oc = 0; oc < 3; oc++) {
-      objTable.getCell(0, oc).editAsText().setFontFamily('Arial').setFontSize(9).setBold(true).setForegroundColor('#FFFFFF').setBackgroundColor('#1A1A2E');
+    const json = await res.json();
+    if (json.status === 'success') {
+      console.log('Sheets sync:', json.message);
+      document.getElementById('sync-status').textContent = '✓ Saved to Google Sheets';
+      document.getElementById('sync-status').style.color = 'var(--cyan)';
+    } else {
+      throw new Error(json.message);
     }
+  } catch(err) {
+    console.error('Sheets sync failed:', err);
+    document.getElementById('sync-status').textContent = '⚠ Sheets sync failed — use clipboard export as backup';
+    document.getElementById('sync-status').style.color = 'var(--amber)';
   }
-
-  // ── Field commitments ──
-  body.appendParagraph('');
-  var fcHeader = body.appendParagraph('★ YOUR FIELD COMMITMENTS');
-  fcHeader.editAsText().setFontFamily('Arial').setFontSize(11).setBold(true).setForegroundColor('#1A1A2E');
-  var fcNote = body.appendParagraph('These are the specific commitments you made at the end of your session. You are accountable to these before your next boot camp session.');
-  fcNote.editAsText().setFontFamily('Arial').setFontSize(10).setItalic(true).setForegroundColor('#4A4A5A');
-  body.appendParagraph('');
-  var fcText = body.appendParagraph(data.fieldCommitments || '');
-  fcText.editAsText().setFontFamily('Arial').setFontSize(11).setBold(false).setForegroundColor('#1A1A2E');
-
-  // ── Footer ──
-  body.appendParagraph('');
-  var footer = body.appendParagraph('Current Home Sales Boot Camp — Confidential Internal Document');
-  footer.editAsText().setFontFamily('Arial').setFontSize(9).setItalic(true).setForegroundColor('#999999');
-
-  doc.saveAndClose();
-  return doc.getUrl();
 }
 
-function mapScore(key) {
-  var map = {
-    'excellent': 'Excellent',
-    'fair':      'Fair',
-    'needs':     'Needs Improvement',
-    'dna':       'Did Not Address',
-    'n/a':       'N/A',
-    '':          ''
-  };
-  return map[key] || key;
-}
-
-// ── Dashboard updater ──────────────────────────────────────
-function updateDashboard(ss, repName, sessionNum, data) {
-  var dash = ss.getSheetByName('📊 Dashboard');
-  if (!dash) return;
-
-  // Find rep row in dashboard (rows 7-17)
-  for (var r = 7; r <= 17; r++) {
-    var cellVal = dash.getRange(r, 1).getValue();
-    if (cellVal && cellVal.toString().toLowerCase() === repName.toLowerCase()) {
-      // Update session, date, manager, recording
-      dash.getRange(r, 3).setValue(data.date    || '');  // C = Date
-      dash.getRange(r, 4).setValue('Session ' + sessionNum); // D = Session
-      dash.getRange(r, 2).setValue(data.manager || '');  // B = Manager
-      dash.getRange(r, 9).setValue(data.recordingLink || ''); // I = Recording
-
-      // Count scores for this session from the rep sheet
-      var repSheet = ss.getSheetByName(repName);
-      if (repSheet) {
-        var startRow = SESSION_START_ROWS[sessionNum - 1];
-        var scoreRange = repSheet.getRange(startRow + 6, 3, 41, 1); // C col, 41 rows
-        var scoreValues = scoreRange.getValues();
-        var counts = { excellent: 0, fair: 0, needs: 0, dna: 0 };
-        scoreValues.forEach(function(row) {
-          var v = (row[0] || '').toString().toLowerCase();
-          if (v === 'excellent')         counts.excellent++;
-          else if (v === 'fair')          counts.fair++;
-          else if (v === 'needs improvement') counts.needs++;
-          else if (v === 'did not address')   counts.dna++;
+function buildReport() {
+  const p = PROFILES[state.session];
+  document.getElementById('rpt-name').textContent = state.rep;
+  document.getElementById('rpt-meta').textContent = 'Session ' + state.session + '  ·  ' + p.name + '  ·  Manager: ' + state.manager + '  ·  ' + (state.date || 'Today');
+  let c = { excellent: 0, fair: 0, needs: 0, dna: 0 };
+  STEPS.forEach(s => { if (state.scores[s.id]) c[state.scores[s.id]]++; });
+  Object.values(state.objScores).forEach(s => { if (s) c[s]++; });
+  SCORE_KEYS.forEach(k => document.getElementById('rpt-' + k).textContent = c[k]);
+  const sections = [
+    { label: 'Sales Process Steps (1-16)', steps: STEPS.filter(s => s.cat === 'process') },
+    { label: 'Closing Sequence (17-20)', steps: STEPS.filter(s => s.cat === 'close') },
+    { label: 'Presentation Elements', steps: STEPS.filter(s => s.cat === 'elements') },
+  ];
+  let html = '';
+  sections.forEach(sec => {
+    html += '<div class="report-section"><div class="report-section-title">' + sec.label + '</div>';
+    sec.steps.forEach(step => {
+      const s = state.scores[step.id];
+      const bc = s ? 'badge-' + s : 'badge-unscored';
+      const bl = s ? SCORE_LABELS[SCORE_KEYS.indexOf(s)] : '—';
+      const note = state.notes[step.id];
+      html += '<div class="report-row"><div class="report-row-left">' +
+        '<div class="report-row-label"><strong>' + step.num + '.</strong> ' + step.title + '</div>' +
+        (note ? '<div class="report-row-note">' + note + '</div>' : '') +
+        '</div><div class="step-badge ' + bc + '">' + bl + '</div></div>';
+      if (step.isObjStep) {
+        Object.keys(state.objRaised).filter(i => state.objRaised[i]).forEach(i => {
+          const os = state.objScores[i];
+          const ok = os ? 'badge-' + os : 'badge-unscored';
+          const ol = os ? SCORE_LABELS[SCORE_KEYS.indexOf(os)] : 'Unscored';
+          html += '<div class="report-row" style="background:var(--off-white);">' +
+            '<div class="report-row-obj-label">' + OBJECTIONS[i] + '</div>' +
+            '<div class="step-badge ' + ok + '">' + ol + '</div></div>';
         });
-        dash.getRange(r, 5).setValue(counts.excellent); // E
-        dash.getRange(r, 6).setValue(counts.fair);       // F
-        dash.getRange(r, 7).setValue(counts.needs);      // G
-        dash.getRange(r, 8).setValue(counts.dna);        // H
       }
-      break;
-    }
+    });
+    html += '</div>';
+  });
+  if (state.recordingLink) {
+    html += '<div class="report-section"><div class="report-section-title">Session Recording</div>' +
+      '<div class="report-row"><a href="' + state.recordingLink + '" target="_blank" style="color:var(--cyan);font-size:13px;word-break:break-all;">' + state.recordingLink + '</a></div></div>';
   }
+  document.getElementById('rpt-body').innerHTML = html;
 }
+
+function exportReport() {
+  const p = PROFILES[state.session];
+  let lines = [
+    'CURRENT HOME — BOOT CAMP SCORECARD',
+    '='.repeat(40),
+    'Rep: ' + state.rep,
+    'Session: ' + state.session + ' — ' + p.name,
+    'Manager: ' + state.manager,
+    'Date: ' + (state.date || ''),
+    '',
+    'RESULTS',
+    '-'.repeat(40),
+  ];
+  STEPS.forEach(s => {
+    const sc = state.scores[s.id];
+    lines.push(s.num + '. ' + s.title + ': ' + (sc ? SCORE_FULL_LABELS[SCORE_KEYS.indexOf(sc)] : 'Unscored'));
+    if (state.notes[s.id]) lines.push('   Note: ' + state.notes[s.id]);
+    if (s.isObjStep) {
+      Object.keys(state.objRaised).filter(i => state.objRaised[i]).forEach(i => {
+        const os = state.objScores[i];
+        lines.push('   Objection: ' + OBJECTIONS[i] + ' → ' + (os ? SCORE_FULL_LABELS[SCORE_KEYS.indexOf(os)] : 'Unscored'));
+      });
+    }
+  });
+  if (state.recordingLink) lines.push('', 'Recording: ' + state.recordingLink);
+  navigator.clipboard.writeText(lines.join('\n'))
+    .then(() => alert('Scorecard copied to clipboard!'))
+    .catch(() => alert('Could not copy automatically. Please use Ctrl+C.'));
+}
+
+function goBack() { showScreen('scoring'); }
+function newSession() { if (confirm('Start a new session? Current session data will be cleared.')) location.reload(); }
+</script>
+</body>
+</html>
